@@ -373,6 +373,7 @@ let localStream = null;
 let peerConnection = null;
 let remoteUserId = null;
 let iceCandidatesQueue = [];
+const MAX_ICE_QUEUE_SIZE = 50; // Prevent memory leak
 let isAudioEnabled = true;
 let isVideoEnabled = true;
 
@@ -393,12 +394,12 @@ async function startVideoCall() {
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             document.getElementById('localVideo').srcObject = localStream;
         }
-        
+
         // Reset state ke enabled
         isAudioEnabled = true;
         isVideoEnabled = true;
         resetVideoControls();
-        
+
         document.getElementById('videoCallContainer').classList.add('active');
 
         // Kirim pesan ajakan ke chat
@@ -517,7 +518,7 @@ function showIncomingCallModal(callerName) {
         callerNameEl.textContent = callerName;
         incomingCallModal.style.display = 'flex';
         pendingCallResolve = resolve;
-        
+
         console.log('📞 Incoming call modal displayed for', callerName);
     });
 }
@@ -535,14 +536,14 @@ async function handleVideoSignal(data) {
 
     if (signal.type === 'offer') {
         console.log('🔔 Showing incoming call modal for', data.username);
-        
+
         // Show custom modal and wait for user response
         const accepted = await showIncomingCallModal(data.username);
         console.log('✅ User decision:', accepted ? 'ACCEPTED' : 'REJECTED');
-        
+
         if (accepted) {
             console.log('📞 Accepting video call from', data.username);
-            
+
             if (!localStream) {
                 try {
                     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -555,15 +556,15 @@ async function handleVideoSignal(data) {
                     return;
                 }
             }
-            
+
             // Reset state dan UI
             isAudioEnabled = true;
             isVideoEnabled = true;
             resetVideoControls();
-            
+
             document.getElementById('videoCallContainer').classList.add('active');
             document.getElementById('remoteLabel').textContent = data.username;
-            
+
             // Pastikan remote video box tidak ada class video-off
             const remoteVideoBox = document.getElementById('remoteVideoBox');
             if (remoteVideoBox) {
@@ -626,7 +627,13 @@ async function handleVideoSignal(data) {
                 }
             } else {
                 console.log('⏳ Queue ICE candidate (no remote desc yet)');
-                iceCandidatesQueue.push(signal.candidate);
+                if (iceCandidatesQueue.length < MAX_ICE_QUEUE_SIZE) {
+                    iceCandidatesQueue.push(signal.candidate);
+                } else {
+                    console.warn('⚠️ ICE queue full, dropping old candidate');
+                    iceCandidatesQueue.shift();
+                    iceCandidatesQueue.push(signal.candidate);
+                }
             }
         }
     }
@@ -636,7 +643,7 @@ function resetVideoControls() {
     const audioBtn = document.getElementById('toggleAudioBtn');
     const videoBtn = document.getElementById('toggleVideoBtn');
     const localVideoBox = document.getElementById('localVideoBox');
-    
+
     // Reset audio button
     if (audioBtn) {
         audioBtn.classList.remove('muted');
@@ -650,46 +657,11 @@ function resetVideoControls() {
             <span>Mic</span>
         `;
     }
-    
+
     // Reset video button
     if (videoBtn) {
         videoBtn.classList.remove('muted');
         localVideoBox.classList.remove('video-off');
-        videoBtn.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="23 7 16 12 23 17 23 7"></polygon>
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-            </svg>
-            <span>Kamera</span>
-        `;
-    }
-}
-
-function resetVideoControls() {
-    const audioBtn = document.getElementById('toggleAudioBtn');
-    const videoBtn = document.getElementById('toggleVideoBtn');
-    const localVideoBox = document.getElementById('localVideoBox');
-    
-    // Reset audio button
-    if (audioBtn) {
-        audioBtn.classList.remove('muted');
-        audioBtn.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                <line x1="12" y1="19" x2="12" y2="23"></line>
-                <line x1="8" y1="23" x2="16" y2="23"></line>
-            </svg>
-            <span>Mic</span>
-        `;
-    }
-    
-    // Reset video button
-    if (videoBtn) {
-        videoBtn.classList.remove('muted');
-        if (localVideoBox) {
-            localVideoBox.classList.remove('video-off');
-        }
         videoBtn.innerHTML = `
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polygon points="23 7 16 12 23 17 23 7"></polygon>
@@ -784,10 +756,10 @@ function endCall() {
     iceCandidatesQueue = [];
     isAudioEnabled = true;
     isVideoEnabled = true;
-    
+
     // Reset UI controls
     resetVideoControls();
-    
+
     document.getElementById('videoCallContainer').classList.remove('active');
     document.getElementById('remoteVideo').srcObject = null;
     document.getElementById('localVideo').srcObject = null;
@@ -799,8 +771,14 @@ document.getElementById('toggleAudioBtn').addEventListener('click', toggleAudio)
 document.getElementById('toggleVideoBtn').addEventListener('click', toggleVideo);
 
 // ==================== Utilities ====================
+let scrollPending = false;
 function scrollToBottom() {
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    if (scrollPending) return;
+    scrollPending = true;
+    requestAnimationFrame(() => {
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        scrollPending = false;
+    });
 }
 
 function escapeHtml(text) {

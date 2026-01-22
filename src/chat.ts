@@ -30,6 +30,9 @@ export class ChatRoom extends DurableObject<Env> {
     private alarmScheduled: boolean;
     private isFlushing: boolean;
     private readonly MAX_RETRY_ATTEMPTS = 3;
+    private readonly MAX_BUFFER_SIZE = 100;
+    private userMessageRates: Map<string, { count: number, resetAt: number }> = new Map();
+    private readonly MAX_MESSAGES_PER_MINUTE = 30;
 
     constructor(ctx: DurableObjectState, env: Env) {
         super(ctx, env);
@@ -149,6 +152,23 @@ export class ChatRoom extends DurableObject<Env> {
                 case 'message':
                     if (!data.content?.trim()) return;
 
+                    // Rate limiting: max 30 messages per minute
+                    const now = Date.now();
+                    const userRate = this.userMessageRates.get(session.userId) || { count: 0, resetAt: now + 60000 };
+
+                    if (now > userRate.resetAt) {
+                        userRate.count = 0;
+                        userRate.resetAt = now + 60000;
+                    }
+
+                    userRate.count++;
+                    this.userMessageRates.set(session.userId, userRate);
+
+                    if (userRate.count > this.MAX_MESSAGES_PER_MINUTE) {
+                        console.warn(`Rate limit exceeded for user ${session.userId}`);
+                        return;
+                    }
+
                     const chatMessage: ChatMessage = {
                         type: 'message',
                         userId: session.userId,
@@ -162,7 +182,11 @@ export class ChatRoom extends DurableObject<Env> {
                     // Broadcast to all clients EXCEPT sender (sender does optimistic UI)
                     this.broadcast(chatMessage, ws);
 
-                    // Buffer message for D1 persistence
+                    // Buffer message for D1 persistence with limit check
+                    if (this.messageBuffer.length >= this.MAX_BUFFER_SIZE) {
+                        console.warn('Buffer full, forcing flush');
+                        await this.flushToD1();
+                    }
                     this.messageBuffer.push(chatMessage);
 
                     // Persist buffer to storage immediately to survive hibernation
@@ -202,35 +226,42 @@ export class ChatRoom extends DurableObject<Env> {
 
                 case 'typing':
                     // Rate limit: max 1 typing broadcast per 2 seconds per user
-                    const now = Date.now();
+                    const typingNow = Date.now();
                     const lastBroadcast = session.lastTypingBroadcast || 0;
 
-                    if (now - lastBroadcast > 2000) {
-                        session.lastTypingBroadcast = now;
+                    if (typingNow - lastBroadcast > 2000) {
+                        session.lastTypingBroadcast = typingNow;
                         ws.serializeAttachment(session);
 
-                        // User is typing, broadcast to others
-                        this.broadcast({
-                            type: 'typing' as any,
-                            userId: session.userId,
-                            username: session.username,
-                            color: session.color,
-                            content: '',
-                            timestamp: now
-                        }, ws);
+                        // Optimize: Skip typing broadcast in large rooms (100+ users)
+                        const totalUsers = this.ctx.getWebSockets().length;
+                        if (totalUsers < 100) {
+                            // User is typing, broadcast to others
+                            this.broadcast({
+                                type: 'typing' as any,
+                                userId: session.userId,
+                                username: session.username,
+                                color: session.color,
+                                content: '',
+                                timestamp: now
+                            }, ws);
+                        }
                     }
                     break;
 
                 case 'stop_typing':
-                    // User stopped typing
-                    this.broadcast({
-                        type: 'stop_typing' as any,
-                        userId: session.userId,
-                        username: session.username,
-                        color: session.color,
-                        content: '',
-                        timestamp: Date.now()
-                    }, ws);
+                    // User stopped typing - optimize for large rooms
+                    const totalUsers = this.ctx.getWebSockets().length;
+                    if (totalUsers < 100) {
+                        this.broadcast({
+                            type: 'stop_typing' as any,
+                            userId: session.userId,
+                            username: session.username,
+                            color: session.color,
+                            content: '',
+                            timestamp: Date.now()
+                        }, ws);
+                    }
                     break;
 
                 case 'signal':
