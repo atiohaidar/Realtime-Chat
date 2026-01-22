@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS messages (
     username TEXT NOT NULL,
     color TEXT NOT NULL DEFAULT '#3b82f6',
     content TEXT NOT NULL,
+    metadata TEXT DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -40,6 +40,11 @@
 
                 <span class="status-badge" id="statusBadge">Menghubungkan...</span>
 
+                <button class="icon-btn" id="audioBtn" title="Audio Call">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+                    </svg>
+                </button>
                 <button class="icon-btn" id="videoBtn" title="Video Call">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                         <path d="M23 7l-7 5 7 5V7z"></path>
@@ -82,6 +87,14 @@
         <div class="video-box remote" id="remoteVideoBox">
             <video id="remoteVideo" autoplay playsinline></video>
             <div class="video-label" id="remoteLabel">Teman</div>
+            <button class="fullscreen-video-btn" id="remoteFullscreenBtn" title="Fullscreen">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="15 3 21 3 21 9"></polyline>
+                    <polyline points="9 21 3 21 3 15"></polyline>
+                    <line x1="21" y1="3" x2="14" y2="10"></line>
+                    <line x1="3" y1="21" x2="10" y2="14"></line>
+                </svg>
+            </button>
         </div>
         <div class="video-box local" id="localVideoBox">
             <video id="localVideo" autoplay playsinline muted></video>
@@ -103,6 +116,14 @@
                     <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
                 </svg>
                 <span>Kamera</span>
+            </button>
+            <button class="video-btn" id="shareScreenBtn" title="Share Screen">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+                <span>Share</span>
             </button>
             <button class="video-btn hangup" id="hangupBtn">Tutup Telepon</button>
         </div>
@@ -159,7 +180,203 @@
         </div>
     </div>
 
+    <!-- Remote Video Fullscreen Modal -->
+    <div class="screen-share-modal" id="remoteVideoFullscreenModal">
+        <div class="screen-share-header">
+            <div class="screen-share-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+                <span id="remoteVideoFullscreenLabel">Video Call</span>
+            </div>
+            <div class="screen-share-actions">
+                <button class="ss-btn" id="rvfToggleFullscreenBtn" title="Fullscreen">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <polyline points="9 21 3 21 3 15"></polyline>
+                        <line x1="21" y1="3" x2="14" y2="10"></line>
+                        <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                </button>
+                <button class="ss-btn" id="rvfMinimizeBtn" title="Minimize">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="4 14 10 14 10 20"></polyline>
+                        <polyline points="20 10 14 10 14 4"></polyline>
+                        <line x1="14" y1="10" x2="21" y2="3"></line>
+                        <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="screen-share-content">
+            <video id="remoteVideoFullscreen" autoplay playsinline></video>
+            <div class="screen-share-local-pip" id="rvfLocalPip">
+                <video id="rvfLocalVideo" autoplay playsinline muted></video>
+                <span>Kamu</span>
+            </div>
+        </div>
+        <div class="screen-share-controls">
+            <button class="ss-control-btn" id="rvfToggleAudioBtn" title="Mute/Unmute">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+                <span>Mic</span>
+            </button>
+            <button class="ss-control-btn" id="rvfToggleVideoBtn" title="On/Off Camera">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+                <span>Kamera</span>
+            </button>
+            <button class="ss-control-btn" id="rvfShareScreenBtn" title="Share Screen">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+                <span>Share</span>
+            </button>
+            <button class="ss-control-btn hangup" id="rvfHangupBtn">Tutup</button>
+        </div>
+    </div>
+
+    <!-- Screen Share Fullscreen Modal -->
+    <div class="screen-share-modal" id="screenShareModal">
+        <div class="screen-share-header">
+            <div class="screen-share-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+                <span id="screenShareLabel">Berbagi Layar</span>
+            </div>
+            <div class="screen-share-actions">
+                <button class="ss-btn" id="ssToggleFullscreenBtn" title="Fullscreen">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="15 3 21 3 21 9"></polyline>
+                        <polyline points="9 21 3 21 3 15"></polyline>
+                        <line x1="21" y1="3" x2="14" y2="10"></line>
+                        <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                </button>
+                <button class="ss-btn" id="ssMinimizeBtn" title="Minimize">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="4 14 10 14 10 20"></polyline>
+                        <polyline points="20 10 14 10 14 4"></polyline>
+                        <line x1="14" y1="10" x2="21" y2="3"></line>
+                        <line x1="3" y1="21" x2="10" y2="14"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        <div class="screen-share-content">
+            <video id="screenShareVideo" autoplay playsinline></video>
+            <div class="screen-share-local-pip" id="screenShareLocalPip">
+                <video id="screenShareLocalVideo" autoplay playsinline muted></video>
+                <span>Kamu</span>
+            </div>
+        </div>
+        <div class="screen-share-controls">
+            <button class="ss-control-btn" id="ssToggleAudioBtn" title="Mute/Unmute">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+                <span>Mic</span>
+            </button>
+            <button class="ss-control-btn" id="ssToggleVideoBtn" title="On/Off Camera">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+                <span>Kamera</span>
+            </button>
+            <button class="ss-control-btn active" id="ssStopShareBtn" title="Stop Sharing">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                    <line x1="2" y1="3" x2="22" y2="17"></line>
+                </svg>
+                <span>Stop Share</span>
+            </button>
+            <button class="ss-control-btn hangup" id="ssHangupBtn">Tutup</button>
+        </div>
+    </div>
+
+    <!-- Audio Call Container -->
+    <div class="audio-call-container" id="audioCallContainer">
+        <div class="audio-call-card">
+            <div class="audio-call-avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+            </div>
+            <div class="audio-call-info">
+                <div class="audio-call-name" id="audioCallRemoteName">Teman</div>
+                <div class="audio-call-status" id="audioCallStatus">Menghubungi...</div>
+                <div class="audio-call-duration" id="audioCallDuration">00:00</div>
+            </div>
+            <div class="audio-call-controls">
+                <button class="audio-btn" id="toggleAudioCallMuteBtn" title="Mute/Unmute">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                    <span>Mic</span>
+                </button>
+                <button class="audio-btn" id="audioShareScreenBtn" title="Share Screen">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                    <span>Share</span>
+                </button>
+                <button class="audio-btn hangup" id="audioHangupBtn">Tutup</button>
+            </div>
+        </div>
+        <audio id="remoteAudio" autoplay></audio>
+    </div>
+
+    <!-- Audio Call Incoming Modal -->
+    <div class="modal-overlay" id="incomingAudioCallModal" style="display: none;">
+        <div class="notebook-modal" style="max-width: 400px;">
+            <div style="position: relative; z-index: 2; text-align: center;">
+                <h2 class="modal-title" style="margin-bottom: 1rem;">📞 Panggilan Suara Masuk</h2>
+                <p style="font-family: 'Patrick Hand', cursive; font-size: 1.2rem; margin: 1rem 0;">
+                    <strong id="audioCallerName">Someone</strong> mau telepon
+                </p>
+                <p style="font-size: 0.9rem; color: #666; margin-bottom: 1.5rem;">
+                    Terima panggilan?
+                </p>
+                <div class="modal-actions">
+                    <button class="btn-hand" id="rejectAudioCallBtn" style="background: #c92a2a; color: white;">
+                        ❌ Tolak
+                    </button>
+                    <button class="btn-hand primary" id="acceptAudioCallBtn" style="background: #15803d;">
+                        ✅ Terima
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="client.js"></script>
+    <script src="videocall.js"></script>
+    <script src="audiocall.js"></script>
+    <script src="screenshare.js"></script>
 </body>
 
 </html>

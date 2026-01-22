@@ -22,9 +22,87 @@ let isTyping = false;
 let lastTypingBroadcast = 0;
 const TYPING_THROTTLE_MS = 2000;
 
-// Incoming call state
-let pendingCallData = null;
-let pendingCallResolve = null;
+// Unread & Notification State
+let unreadCount = 0;
+let isWindowFocused = true;
+let originalTitle = document.title;
+
+// ==================== Sound Notification ====================
+function createBeepSound(frequency = 800, duration = 150, volume = 0.3) {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.frequency.value = frequency;
+    oscillator.type = 'sine';
+    gainNode.gain.value = volume;
+    
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + duration / 1000);
+}
+
+function playMessageSound() {
+    if (!isWindowFocused) {
+        createBeepSound(600, 100, 0.2);
+        setTimeout(() => createBeepSound(800, 100, 0.2), 120);
+    }
+}
+
+function playCallSound() {
+    // Ringtone pattern: beep-beep, pause, beep-beep
+    const playRing = () => {
+        createBeepSound(700, 200, 0.4);
+        setTimeout(() => createBeepSound(900, 200, 0.4), 250);
+    };
+    
+    playRing();
+    setTimeout(playRing, 600);
+    setTimeout(playRing, 1200);
+}
+
+function playJoinSound() {
+    createBeepSound(500, 80, 0.15);
+    setTimeout(() => createBeepSound(700, 80, 0.15), 100);
+}
+
+function playLeaveSound() {
+    createBeepSound(700, 80, 0.15);
+    setTimeout(() => createBeepSound(500, 80, 0.15), 100);
+}
+
+// ==================== Unread Indicator ====================
+function updateUnreadIndicator() {
+    if (unreadCount > 0) {
+        document.title = `(${unreadCount}) ${originalTitle}`;
+    } else {
+        document.title = originalTitle;
+    }
+}
+
+function incrementUnread() {
+    if (!isWindowFocused) {
+        unreadCount++;
+        updateUnreadIndicator();
+    }
+}
+
+function clearUnread() {
+    unreadCount = 0;
+    updateUnreadIndicator();
+}
+
+// Window focus handlers
+window.addEventListener('focus', () => {
+    isWindowFocused = true;
+    clearUnread();
+});
+
+window.addEventListener('blur', () => {
+    isWindowFocused = false;
+});
 
 // ==================== DOM Elements ====================
 const messagesContainer = document.getElementById('messagesContainer');
@@ -43,10 +121,6 @@ const onlineCountBtn = document.getElementById('onlineCountBtn');
 const onlineListPopover = document.getElementById('onlineListPopover');
 const onlineUserList = document.getElementById('onlineUserList');
 const onlineCountText = document.getElementById('onlineCountText');
-const incomingCallModal = document.getElementById('incomingCallModal');
-const callerNameEl = document.getElementById('callerName');
-const acceptCallBtn = document.getElementById('acceptCallBtn');
-const rejectCallBtn = document.getElementById('rejectCallBtn');
 
 // ==================== Profile Management ====================
 function loadProfile() {
@@ -176,7 +250,8 @@ async function loadHistory() {
                     username: msg.username,
                     color: msg.color,
                     content: msg.content,
-                    timestamp: new Date(msg.created_at).getTime()
+                    timestamp: new Date(msg.created_at).getTime(),
+                    metadata: msg.metadata // Include metadata for call invites
                 }, false);
             });
             scrollToBottom();
@@ -199,6 +274,11 @@ function handleMessage(data) {
     switch (data.type) {
         case 'message':
             renderMessage(data);
+            // Play sound and update unread for messages from others
+            if (data.userId !== profile.userId) {
+                playMessageSound();
+                incrementUnread();
+            }
             break;
         case 'typing':
             if (data.userId !== profile.userId) {
@@ -213,8 +293,16 @@ function handleMessage(data) {
             }
             break;
         case 'join':
+            if (data.userId !== profile.userId) {
+                renderSystemMessage(`👋 ${data.username} bergabung ke chat`);
+                playJoinSound();
+            }
+            break;
         case 'leave':
-            // Optional: renderSystemMessage(`${data.username} ${data.type === 'join' ? 'masuk kelas' : 'pulang'}`);
+            if (data.userId !== profile.userId) {
+                renderSystemMessage(`👋 ${data.username} meninggalkan chat`);
+                playLeaveSound();
+            }
             break;
         case 'online_users':
             updateOnlineList(data.users);
@@ -224,7 +312,26 @@ function handleMessage(data) {
             renderSystemMessage('Halaman telah dihapus bersih oleh seseorang');
             break;
         case 'signal':
-            handleVideoSignal(data);
+            // Parse signal to determine type
+            try {
+                const signalContent = JSON.parse(data.content);
+                if (signalContent.type && signalContent.type.startsWith('audio-')) {
+                    // Delegasi ke AudioCall module
+                    if (window.AudioCall) {
+                        window.AudioCall.handleAudioSignal(data);
+                    }
+                } else {
+                    // Delegasi ke VideoCall module
+                    if (window.VideoCall) {
+                        window.VideoCall.handleVideoSignal(data);
+                    }
+                }
+            } catch (e) {
+                // Fallback ke VideoCall jika parsing error
+                if (window.VideoCall) {
+                    window.VideoCall.handleVideoSignal(data);
+                }
+            }
             break;
     }
 }
@@ -274,8 +381,8 @@ function renderMessage(data, shouldScroll = true) {
 
     messageEl.innerHTML = `
         <div class="avatar-doodle" style="background-color: ${inkColor}">${initial}</div>
-        <div class="message-bubble ${data.metadata?.action === 'join_call' ? 'call-invite' : ''}" 
-             style="${data.metadata?.action === 'join_call' ? 'cursor: pointer;' : ''}">
+        <div class="message-bubble ${data.metadata?.action === 'join_call' ? 'call-invite' : ''} ${data.metadata?.action === 'join_audio_call' ? 'audio-call-invite' : ''}" 
+             style="${(data.metadata?.action === 'join_call' || data.metadata?.action === 'join_audio_call') ? 'cursor: pointer;' : ''}">
             ${!isOwn ? `<span class="sender-name" style="color:${inkColor}">${escapeHtml(data.username)}</span>` : ''}
             <div class="message-text" style="color: ${inkColor}">
                 ${escapeHtml(data.content)}
@@ -286,7 +393,19 @@ function renderMessage(data, shouldScroll = true) {
 
     if (data.metadata?.action === 'join_call' && !isOwn) {
         messageEl.querySelector('.message-bubble').addEventListener('click', () => {
-            joinVideoCall(data.userId, data.username);
+            // Delegasi ke VideoCall module
+            if (window.VideoCall) {
+                window.VideoCall.joinVideoCall(data.userId, data.username);
+            }
+        });
+    }
+
+    if (data.metadata?.action === 'join_audio_call' && !isOwn) {
+        messageEl.querySelector('.message-bubble').addEventListener('click', () => {
+            // Delegasi ke AudioCall module
+            if (window.AudioCall) {
+                window.AudioCall.joinAudioCall(data.userId, data.username);
+            }
         });
     }
 
@@ -367,408 +486,6 @@ function sendMessage() {
     }
     messageInput.value = '';
 }
-
-// ==================== WebRTC Video Call Logic ====================
-let localStream = null;
-let peerConnection = null;
-let remoteUserId = null;
-let iceCandidatesQueue = [];
-const MAX_ICE_QUEUE_SIZE = 50; // Prevent memory leak
-let isAudioEnabled = true;
-let isVideoEnabled = true;
-
-const rtcConfig = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' }
-    ],
-    iceCandidatePoolSize: 10
-};
-
-async function startVideoCall() {
-    try {
-        if (!localStream) {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('localVideo').srcObject = localStream;
-        }
-
-        // Reset state ke enabled
-        isAudioEnabled = true;
-        isVideoEnabled = true;
-        resetVideoControls();
-
-        document.getElementById('videoCallContainer').classList.add('active');
-
-        // Kirim pesan ajakan ke chat
-        ws.send(JSON.stringify({
-            type: 'message',
-            content: '📞 [KLIK DI SINI] ',
-            metadata: { action: 'join_call' }
-        }));
-
-        renderSystemMessage('Menunggu orang lain bergabung...');
-    } catch (e) {
-        console.error('Mic/Kamera ditolak:', e);
-        alert('Gagal akses kamera/mic. Pastikan kamu mengizinkannya di browser ya!');
-    }
-}
-
-async function joinVideoCall(targetUserId, username) {
-    remoteUserId = targetUserId;
-    if (!localStream) {
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('localVideo').srcObject = localStream;
-        } catch (e) {
-            alert('Izinkan kamera dulu ya!');
-            return;
-        }
-    }
-
-    // Reset state ke enabled
-    isAudioEnabled = true;
-    isVideoEnabled = true;
-    resetVideoControls();
-
-    document.getElementById('videoCallContainer').classList.add('active');
-    document.getElementById('remoteLabel').textContent = username || 'Teman';
-    createPeerConnection(targetUserId);
-
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    console.log('📞 Created and set local offer');
-
-    sendSignal(targetUserId, { type: 'offer', sdp: offer.sdp });
-}
-
-function createPeerConnection(targetUserId) {
-    if (peerConnection) return;
-    remoteUserId = targetUserId;
-
-    peerConnection = new RTCPeerConnection(rtcConfig);
-
-    localStream.getTracks().forEach(track => {
-        console.log('➕ Adding local track:', track.kind, track.label);
-        peerConnection.addTrack(track, localStream);
-    });
-
-    peerConnection.ontrack = (event) => {
-        console.log('🎥 Menerima stream dari teman!', event.streams);
-        const remoteVid = document.getElementById('remoteVideo');
-        const stream = event.streams[0];
-
-        if (stream && remoteVid) {
-            console.log('🎥 Stream tracks:', stream.getTracks().map(t => t.kind));
-            remoteVid.srcObject = stream;
-
-            // Pastikan video di-play
-            setTimeout(() => {
-                remoteVid.play().then(() => {
-                    console.log('✅ Remote video playing');
-                }).catch(e => {
-                    console.error('❌ Auto-play failed:', e);
-                    // Try again
-                    remoteVid.play();
-                });
-            }, 100);
-        }
-    };
-
-    peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-            sendSignal(targetUserId, { type: 'candidate', candidate: event.candidate });
-        }
-    };
-
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('🔌 ICE Connection State:', peerConnection.iceConnectionState);
-        if (peerConnection.iceConnectionState === 'connected' || peerConnection.iceConnectionState === 'completed') {
-            renderSystemMessage('Terhubung dengan teman!');
-        } else if (peerConnection.iceConnectionState === 'disconnected') {
-            renderSystemMessage('Koneksi terputus...');
-        } else if (peerConnection.iceConnectionState === 'failed') {
-            renderSystemMessage('Koneksi gagal. Coba lagi.');
-        }
-    };
-
-    peerConnection.onconnectionstatechange = () => {
-        console.log('📡 Connection State:', peerConnection.connectionState);
-    };
-}
-
-function sendSignal(to, content) {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-        console.error('❌ Cannot send signal: WebSocket not open');
-        return;
-    }
-    console.log('📤 Sending signal to', to, ':', content.type);
-    ws.send(JSON.stringify({
-        type: 'signal',
-        to: to,
-        content: JSON.stringify(content)
-    }));
-}
-
-// Show custom incoming call modal (Promise-based)
-function showIncomingCallModal(callerName) {
-    return new Promise((resolve) => {
-        callerNameEl.textContent = callerName;
-        incomingCallModal.style.display = 'flex';
-        pendingCallResolve = resolve;
-
-        console.log('📞 Incoming call modal displayed for', callerName);
-    });
-}
-
-// Hide incoming call modal
-function hideIncomingCallModal() {
-    incomingCallModal.style.display = 'none';
-    pendingCallResolve = null;
-}
-
-async function handleVideoSignal(data) {
-    const signal = JSON.parse(data.content);
-    const from = data.userId;
-    console.log('📥 Received signal from', data.username, ':', signal.type);
-
-    if (signal.type === 'offer') {
-        console.log('🔔 Showing incoming call modal for', data.username);
-
-        // Show custom modal and wait for user response
-        const accepted = await showIncomingCallModal(data.username);
-        console.log('✅ User decision:', accepted ? 'ACCEPTED' : 'REJECTED');
-
-        if (accepted) {
-            console.log('📞 Accepting video call from', data.username);
-
-            if (!localStream) {
-                try {
-                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                    document.getElementById('localVideo').srcObject = localStream;
-                } catch (e) {
-                    console.error('Gagal akses media:', e);
-                    alert('Gagal akses kamera/mic. Pastikan sudah diizinkan!');
-                    // Send reject signal
-                    sendSignal(from, { type: 'reject' });
-                    return;
-                }
-            }
-
-            // Reset state dan UI
-            isAudioEnabled = true;
-            isVideoEnabled = true;
-            resetVideoControls();
-
-            document.getElementById('videoCallContainer').classList.add('active');
-            document.getElementById('remoteLabel').textContent = data.username;
-
-            // Pastikan remote video box tidak ada class video-off
-            const remoteVideoBox = document.getElementById('remoteVideoBox');
-            if (remoteVideoBox) {
-                remoteVideoBox.classList.remove('video-off');
-            }
-
-            createPeerConnection(from);
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
-            console.log('✅ Remote description set (offer)');
-
-            // Process queued ICE candidates
-            while (iceCandidatesQueue.length > 0) {
-                const cand = iceCandidatesQueue.shift();
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(cand));
-                    console.log('✅ Queued ICE candidate added');
-                } catch (e) {
-                    console.error('❌ Error adding queued ICE candidate:', e);
-                }
-            }
-
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            console.log('📞 Created and sending answer');
-            sendSignal(from, { type: 'answer', sdp: answer.sdp });
-        } else {
-            // User explicitly clicked Reject
-            console.log('❌ User explicitly rejected call from', data.username);
-            sendSignal(from, { type: 'reject' });
-        }
-    } else if (signal.type === 'reject') {
-        // Call was rejected
-        console.log('❌ Call rejected by', data.username);
-        alert(`${data.username} menolak video call`);
-        endCall();
-    } else if (signal.type === 'answer') {
-        if (peerConnection) {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
-            console.log('✅ Remote description set (answer)');
-
-            // Process queued ICE candidates
-            while (iceCandidatesQueue.length > 0) {
-                const cand = iceCandidatesQueue.shift();
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(cand));
-                    console.log('✅ Queued ICE candidate added');
-                } catch (e) {
-                    console.error('❌ Error adding queued ICE candidate:', e);
-                }
-            }
-        }
-    } else if (signal.type === 'candidate') {
-        if (signal.candidate) {
-            if (peerConnection && peerConnection.remoteDescription) {
-                try {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(signal.candidate));
-                    console.log('✅ ICE candidate added directly');
-                } catch (e) {
-                    console.error('❌ Error adding ICE candidate:', e);
-                }
-            } else {
-                console.log('⏳ Queue ICE candidate (no remote desc yet)');
-                if (iceCandidatesQueue.length < MAX_ICE_QUEUE_SIZE) {
-                    iceCandidatesQueue.push(signal.candidate);
-                } else {
-                    console.warn('⚠️ ICE queue full, dropping old candidate');
-                    iceCandidatesQueue.shift();
-                    iceCandidatesQueue.push(signal.candidate);
-                }
-            }
-        }
-    }
-}
-
-function resetVideoControls() {
-    const audioBtn = document.getElementById('toggleAudioBtn');
-    const videoBtn = document.getElementById('toggleVideoBtn');
-    const localVideoBox = document.getElementById('localVideoBox');
-
-    // Reset audio button
-    if (audioBtn) {
-        audioBtn.classList.remove('muted');
-        audioBtn.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                <line x1="12" y1="19" x2="12" y2="23"></line>
-                <line x1="8" y1="23" x2="16" y2="23"></line>
-            </svg>
-            <span>Mic</span>
-        `;
-    }
-
-    // Reset video button
-    if (videoBtn) {
-        videoBtn.classList.remove('muted');
-        localVideoBox.classList.remove('video-off');
-        videoBtn.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polygon points="23 7 16 12 23 17 23 7"></polygon>
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-            </svg>
-            <span>Kamera</span>
-        `;
-    }
-}
-
-function toggleAudio() {
-    if (!localStream) return;
-
-    const audioTrack = localStream.getAudioTracks()[0];
-    if (audioTrack) {
-        isAudioEnabled = !isAudioEnabled;
-        audioTrack.enabled = isAudioEnabled;
-
-        const btn = document.getElementById('toggleAudioBtn');
-        if (isAudioEnabled) {
-            btn.classList.remove('muted');
-            btn.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                    <line x1="12" y1="19" x2="12" y2="23"></line>
-                    <line x1="8" y1="23" x2="16" y2="23"></line>
-                </svg>
-                <span>Mic</span>
-            `;
-        } else {
-            btn.classList.add('muted');
-            btn.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="1" y1="1" x2="23" y2="23"></line>
-                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
-                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
-                    <line x1="12" y1="19" x2="12" y2="23"></line>
-                    <line x1="8" y1="23" x2="16" y2="23"></line>
-                </svg>
-                <span>Muted</span>
-            `;
-        }
-    }
-}
-
-function toggleVideo() {
-    if (!localStream) return;
-
-    const videoTrack = localStream.getVideoTracks()[0];
-    if (videoTrack) {
-        isVideoEnabled = !isVideoEnabled;
-        videoTrack.enabled = isVideoEnabled;
-
-        const btn = document.getElementById('toggleVideoBtn');
-        const localVideoBox = document.getElementById('localVideoBox');
-
-        if (isVideoEnabled) {
-            btn.classList.remove('muted');
-            localVideoBox.classList.remove('video-off');
-            btn.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
-                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
-                </svg>
-                <span>Kamera</span>
-            `;
-        } else {
-            btn.classList.add('muted');
-            localVideoBox.classList.add('video-off');
-            btn.innerHTML = `
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="1" y1="1" x2="23" y2="23"></line>
-                    <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path>
-                </svg>
-                <span>Kamera Off</span>
-            `;
-        }
-    }
-}
-
-function endCall() {
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-    remoteUserId = null;
-    iceCandidatesQueue = [];
-    isAudioEnabled = true;
-    isVideoEnabled = true;
-
-    // Reset UI controls
-    resetVideoControls();
-
-    document.getElementById('videoCallContainer').classList.remove('active');
-    document.getElementById('remoteVideo').srcObject = null;
-    document.getElementById('localVideo').srcObject = null;
-}
-
-document.getElementById('videoBtn').addEventListener('click', startVideoCall);
-document.getElementById('hangupBtn').addEventListener('click', endCall);
-document.getElementById('toggleAudioBtn').addEventListener('click', toggleAudio);
-document.getElementById('toggleVideoBtn').addEventListener('click', toggleVideo);
 
 // ==================== Utilities ====================
 let scrollPending = false;
@@ -864,22 +581,31 @@ clearBtn.addEventListener('click', async () => {
     }
 });
 
-// Incoming call modal handlers
-acceptCallBtn.addEventListener('click', () => {
-    console.log('✅ User clicked ACCEPT');
-    if (pendingCallResolve) {
-        pendingCallResolve(true);
-        hideIncomingCallModal();
+// ==================== Export Chat Module ====================
+window.Chat = {
+    getWebSocket: () => ws,
+    getProfile: () => profile,
+    renderSystemMessage,
+    escapeHtml,
+    sendVideoCallInvite: () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'message',
+                content: '📞 [KLIK DI SINI] ',
+                metadata: { action: 'join_call' }
+            }));
+        }
+    },
+    sendAudioCallInvite: () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'message',
+                content: '📞 [KLIK UNTUK TELEPON] ',
+                metadata: { action: 'join_audio_call' }
+            }));
+        }
     }
-});
-
-rejectCallBtn.addEventListener('click', () => {
-    console.log('❌ User clicked REJECT');
-    if (pendingCallResolve) {
-        pendingCallResolve(false);
-        hideIncomingCallModal();
-    }
-});
+};
 
 // ==================== Initialization ====================
 loadProfile();

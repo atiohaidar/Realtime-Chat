@@ -44,7 +44,13 @@ app.get('/api/messages', async (c) => {
             'SELECT * FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ?'
         ).bind(roomId, limit).all();
 
-        const response = c.json({ messages: results?.reverse() || [] });
+        // Parse metadata JSON string back to object
+        const messages = (results || []).reverse().map((msg: any) => ({
+            ...msg,
+            metadata: msg.metadata ? JSON.parse(msg.metadata) : undefined
+        }));
+
+        const response = c.json({ messages });
 
         // Cache selama 30 detik untuk mengurangi D1 load
         response.headers.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');

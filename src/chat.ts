@@ -390,9 +390,9 @@ export class ChatRoom extends DurableObject<Env> {
         await this.ctx.storage.delete('msg_buffer');
 
         try {
-            // Batch insert messages
+            // Batch insert messages with metadata
             const stmt = this.env.DB.prepare(
-                'INSERT INTO messages (room_id, user_id, username, color, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+                'INSERT INTO messages (room_id, user_id, username, color, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
 
             const batch = messages.map((msg) =>
@@ -402,6 +402,7 @@ export class ChatRoom extends DurableObject<Env> {
                     msg.username,
                     msg.color,
                     msg.content,
+                    msg.metadata ? JSON.stringify(msg.metadata) : null,
                     new Date(msg.timestamp).toISOString()
                 )
             );
