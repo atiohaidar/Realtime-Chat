@@ -327,7 +327,7 @@ body {
     height: 100%;
     background: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(2px);
-    z-index: 100;
+    z-index: 2000;
     display: none;
     justify-content: center;
     align-items: center;
@@ -589,11 +589,48 @@ body {
     font-family: 'Patrick Hand', cursive;
     cursor: pointer;
     font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.2s;
+}
+
+.video-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
+.video-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.video-btn.muted {
+    background: #f59e0b;
+    color: white;
+    border-color: #d97706;
 }
 
 .video-btn.hangup {
     border-color: var(--ink-accent);
-    color: var(--ink-accent);
+    color: white;
+    background: var(--ink-accent);
+}
+
+.video-box.video-off video {
+    opacity: 0;
+}
+
+.video-box.video-off::after {
+    content: '📷 Kamera Off';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1rem;
+    color: white;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    font-family: 'Patrick Hand', cursive;
 }
 
 .call-invite {
@@ -616,5 +653,335 @@ body {
 
     100% {
         transform: scale(1);
+    }
+}
+
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+    body {
+        font-size: 1rem;
+    }
+
+    .notebook-wrapper {
+        max-width: 100%;
+    }
+
+    /* Header adjustments */
+    .notebook-header {
+        padding: 1rem 1rem 0.5rem 3rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .subject-title {
+        font-size: 1.5rem;
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+
+    .header-controls {
+        gap: 6px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        width: 100%;
+    }
+
+    .status-badge {
+        font-size: 0.85rem;
+        padding: 2px 6px;
+    }
+
+    .icon-btn svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    /* Chat content adjustments */
+    .chat-content {
+        padding: 1rem 1rem 1rem 3rem;
+        gap: 1em;
+    }
+
+    .paper-pattern {
+        background-image:
+            linear-gradient(90deg, transparent 39px, var(--margin-color) 39px, transparent 41px),
+            linear-gradient(transparent 1.9em, var(--line-color) 1.9em);
+        background-size: 100% 2em;
+    }
+
+    /* Messages adjustments */
+    .avatar-doodle {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+    }
+
+    .message-bubble {
+        max-width: 85%;
+    }
+
+    .sender-name {
+        font-size: 0.8rem;
+    }
+
+    .message-text {
+        font-size: 1.1rem;
+        line-height: 1.8em;
+    }
+
+    .timestamp {
+        font-size: 0.65rem;
+    }
+
+    /* Input area adjustments */
+    .input-area {
+        padding: 1rem 1rem 1rem 3rem;
+        gap: 0.5rem;
+    }
+
+    .sketch-input {
+        font-size: 1.1rem;
+        padding: 0.3rem 0;
+    }
+
+    .send-sketch-btn {
+        font-size: 1rem;
+        padding: 6px 12px;
+    }
+
+    /* Modal adjustments */
+    .notebook-modal {
+        width: 95%;
+        padding: 1.5rem 1.5rem 1.5rem 3.5rem;
+    }
+
+    .notebook-modal::before {
+        background-image:
+            linear-gradient(90deg, transparent 2.5rem, var(--margin-color) 2.5rem, transparent 2.7rem),
+            linear-gradient(transparent 1.9em, var(--line-color) 1.9em);
+    }
+
+    .modal-title {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .form-input {
+        font-size: 1rem;
+        padding: 0.4rem;
+    }
+
+    .paint-blob {
+        width: 28px;
+        height: 28px;
+    }
+
+    .btn-hand {
+        font-size: 1rem;
+        padding: 0.4rem;
+    }
+
+    /* Online users adjustments */
+    .online-count-btn {
+        font-size: 0.85rem;
+        padding: 2px 6px;
+    }
+
+    .online-list-popover {
+        width: 180px;
+        font-size: 0.9rem;
+    }
+
+    .online-user-item {
+        font-size: 0.9rem;
+    }
+
+    /* Video call container - Stack vertically on mobile */
+    .video-call-container {
+        bottom: 1rem;
+        right: 1rem;
+        left: 1rem;
+        width: auto;
+        max-width: 100%;
+    }
+
+    .video-box {
+        width: 100%;
+    }
+
+    .video-box.local {
+        max-width: 150px;
+        position: absolute;
+        bottom: 80px;
+        right: 10px;
+        z-index: 10;
+    }
+
+    .video-box.remote {
+        width: 100%;
+    }
+
+    .video-label {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+    }
+
+    .video-btn {
+        font-size: 0.85rem;
+        padding: 6px 12px;
+    }
+}
+
+/* Extra small mobile devices */
+@media (max-width: 480px) {
+    body {
+        font-size: 0.9rem;
+    }
+
+    .subject-title {
+        font-size: 1.2rem;
+    }
+
+    .header-controls {
+        gap: 4px;
+    }
+
+    .icon-btn svg {
+        width: 18px;
+        height: 18px;
+    }
+
+    .status-badge {
+        font-size: 0.75rem;
+        padding: 1px 4px;
+    }
+
+    .chat-content {
+        padding: 0.8rem 0.8rem 0.8rem 2.5rem;
+    }
+
+    .paper-pattern {
+        background-image:
+            linear-gradient(90deg, transparent 29px, var(--margin-color) 29px, transparent 31px),
+            linear-gradient(transparent 1.9em, var(--line-color) 1.9em);
+    }
+
+    .avatar-doodle {
+        width: 28px;
+        height: 28px;
+        font-size: 0.9rem;
+    }
+
+    .message-bubble {
+        max-width: 90%;
+    }
+
+    .message-text {
+        font-size: 1rem;
+    }
+
+    .sender-name {
+        font-size: 0.75rem;
+    }
+
+    .input-area {
+        padding: 0.8rem 0.8rem 0.8rem 2.5rem;
+    }
+
+    .sketch-input {
+        font-size: 1rem;
+    }
+
+    .send-sketch-btn {
+        font-size: 0.9rem;
+        padding: 5px 10px;
+    }
+
+    .notebook-modal {
+        padding: 1rem 1rem 1rem 2.5rem;
+    }
+
+    .notebook-modal::before {
+        background-image:
+            linear-gradient(90deg, transparent 1.8rem, var(--margin-color) 1.8rem, transparent 2rem),
+            linear-gradient(transparent 1.9em, var(--line-color) 1.9em);
+    }
+
+    .modal-title {
+        font-size: 1.3rem;
+    }
+
+    .form-input {
+        font-size: 0.9rem;
+    }
+
+    .paint-blob {
+        width: 26px;
+        height: 26px;
+    }
+
+    .btn-hand {
+        font-size: 0.9rem;
+    }
+
+    .online-list-popover {
+        width: 160px;
+        font-size: 0.85rem;
+    }
+
+    .video-call-container {
+        bottom: 0.5rem;
+        right: 0.5rem;
+        left: 0.5rem;
+    }
+
+    .video-box.local {
+        max-width: 120px;
+        bottom: 70px;
+        right: 5px;
+    }
+
+    .video-btn {
+        font-size: 0.8rem;
+        padding: 5px 10px;
+    }
+}
+
+/* Landscape mode for mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+    .notebook-header {
+        padding: 0.5rem 1rem 0.3rem 3rem;
+    }
+
+    .subject-title {
+        font-size: 1.2rem;
+        margin-bottom: 0.3rem;
+    }
+
+    .chat-content {
+        padding: 0.5rem 1rem 0.5rem 3rem;
+    }
+
+    .input-area {
+        padding: 0.5rem 1rem 0.5rem 3rem;
+    }
+
+    .video-call-container {
+        flex-direction: row;
+        bottom: 0.5rem;
+        right: 0.5rem;
+        left: auto;
+        width: auto;
+    }
+
+    .video-box.local {
+        position: relative;
+        max-width: 200px;
+        bottom: auto;
+        right: auto;
+    }
+
+    .video-box.remote {
+        max-width: 300px;
     }
 }

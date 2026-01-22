@@ -19,6 +19,12 @@ const roomId = urlParams.get('room') || 'general';
 let typingUsers = new Set();
 let typingTimeout = null;
 let isTyping = false;
+let lastTypingBroadcast = 0;
+const TYPING_THROTTLE_MS = 2000;
+
+// Incoming call state
+let pendingCallData = null;
+let pendingCallResolve = null;
 
 // ==================== DOM Elements ====================
 const messagesContainer = document.getElementById('messagesContainer');
@@ -37,6 +43,10 @@ const onlineCountBtn = document.getElementById('onlineCountBtn');
 const onlineListPopover = document.getElementById('onlineListPopover');
 const onlineUserList = document.getElementById('onlineUserList');
 const onlineCountText = document.getElementById('onlineCountText');
+const incomingCallModal = document.getElementById('incomingCallModal');
+const callerNameEl = document.getElementById('callerName');
+const acceptCallBtn = document.getElementById('acceptCallBtn');
+const rejectCallBtn = document.getElementById('rejectCallBtn');
 
 // ==================== Profile Management ====================
 function loadProfile() {
@@ -363,6 +373,8 @@ let localStream = null;
 let peerConnection = null;
 let remoteUserId = null;
 let iceCandidatesQueue = [];
+let isAudioEnabled = true;
+let isVideoEnabled = true;
 
 const rtcConfig = {
     iceServers: [
@@ -381,12 +393,18 @@ async function startVideoCall() {
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             document.getElementById('localVideo').srcObject = localStream;
         }
+        
+        // Reset state ke enabled
+        isAudioEnabled = true;
+        isVideoEnabled = true;
+        resetVideoControls();
+        
         document.getElementById('videoCallContainer').classList.add('active');
 
         // Kirim pesan ajakan ke chat
         ws.send(JSON.stringify({
             type: 'message',
-            content: '📞 [KLIK DI SINI] Yuk video call sama aku!',
+            content: '📞 [KLIK DI SINI] ',
             metadata: { action: 'join_call' }
         }));
 
@@ -408,6 +426,11 @@ async function joinVideoCall(targetUserId, username) {
             return;
         }
     }
+
+    // Reset state ke enabled
+    isAudioEnabled = true;
+    isVideoEnabled = true;
+    resetVideoControls();
 
     document.getElementById('videoCallContainer').classList.add('active');
     document.getElementById('remoteLabel').textContent = username || 'Teman';
@@ -435,11 +458,11 @@ function createPeerConnection(targetUserId) {
         console.log('🎥 Menerima stream dari teman!', event.streams);
         const remoteVid = document.getElementById('remoteVideo');
         const stream = event.streams[0];
-        
+
         if (stream && remoteVid) {
             console.log('🎥 Stream tracks:', stream.getTracks().map(t => t.kind));
             remoteVid.srcObject = stream;
-            
+
             // Pastikan video di-play
             setTimeout(() => {
                 remoteVid.play().then(() => {
@@ -488,19 +511,64 @@ function sendSignal(to, content) {
     }));
 }
 
+// Show custom incoming call modal (Promise-based)
+function showIncomingCallModal(callerName) {
+    return new Promise((resolve) => {
+        callerNameEl.textContent = callerName;
+        incomingCallModal.style.display = 'flex';
+        pendingCallResolve = resolve;
+        
+        console.log('📞 Incoming call modal displayed for', callerName);
+    });
+}
+
+// Hide incoming call modal
+function hideIncomingCallModal() {
+    incomingCallModal.style.display = 'none';
+    pendingCallResolve = null;
+}
+
 async function handleVideoSignal(data) {
     const signal = JSON.parse(data.content);
     const from = data.userId;
     console.log('📥 Received signal from', data.username, ':', signal.type);
 
     if (signal.type === 'offer') {
-        if (confirm(`${data.username} mau video call. Terima?`)) {
+        console.log('🔔 Showing incoming call modal for', data.username);
+        
+        // Show custom modal and wait for user response
+        const accepted = await showIncomingCallModal(data.username);
+        console.log('✅ User decision:', accepted ? 'ACCEPTED' : 'REJECTED');
+        
+        if (accepted) {
+            console.log('📞 Accepting video call from', data.username);
+            
             if (!localStream) {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                document.getElementById('localVideo').srcObject = localStream;
+                try {
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    document.getElementById('localVideo').srcObject = localStream;
+                } catch (e) {
+                    console.error('Gagal akses media:', e);
+                    alert('Gagal akses kamera/mic. Pastikan sudah diizinkan!');
+                    // Send reject signal
+                    sendSignal(from, { type: 'reject' });
+                    return;
+                }
             }
+            
+            // Reset state dan UI
+            isAudioEnabled = true;
+            isVideoEnabled = true;
+            resetVideoControls();
+            
             document.getElementById('videoCallContainer').classList.add('active');
             document.getElementById('remoteLabel').textContent = data.username;
+            
+            // Pastikan remote video box tidak ada class video-off
+            const remoteVideoBox = document.getElementById('remoteVideoBox');
+            if (remoteVideoBox) {
+                remoteVideoBox.classList.remove('video-off');
+            }
 
             createPeerConnection(from);
             await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
@@ -521,12 +589,21 @@ async function handleVideoSignal(data) {
             await peerConnection.setLocalDescription(answer);
             console.log('📞 Created and sending answer');
             sendSignal(from, { type: 'answer', sdp: answer.sdp });
+        } else {
+            // User explicitly clicked Reject
+            console.log('❌ User explicitly rejected call from', data.username);
+            sendSignal(from, { type: 'reject' });
         }
+    } else if (signal.type === 'reject') {
+        // Call was rejected
+        console.log('❌ Call rejected by', data.username);
+        alert(`${data.username} menolak video call`);
+        endCall();
     } else if (signal.type === 'answer') {
         if (peerConnection) {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
             console.log('✅ Remote description set (answer)');
-            
+
             // Process queued ICE candidates
             while (iceCandidatesQueue.length > 0) {
                 const cand = iceCandidatesQueue.shift();
@@ -555,6 +632,145 @@ async function handleVideoSignal(data) {
     }
 }
 
+function resetVideoControls() {
+    const audioBtn = document.getElementById('toggleAudioBtn');
+    const videoBtn = document.getElementById('toggleVideoBtn');
+    const localVideoBox = document.getElementById('localVideoBox');
+    
+    // Reset audio button
+    if (audioBtn) {
+        audioBtn.classList.remove('muted');
+        audioBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+            <span>Mic</span>
+        `;
+    }
+    
+    // Reset video button
+    if (videoBtn) {
+        videoBtn.classList.remove('muted');
+        localVideoBox.classList.remove('video-off');
+        videoBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+            </svg>
+            <span>Kamera</span>
+        `;
+    }
+}
+
+function resetVideoControls() {
+    const audioBtn = document.getElementById('toggleAudioBtn');
+    const videoBtn = document.getElementById('toggleVideoBtn');
+    const localVideoBox = document.getElementById('localVideoBox');
+    
+    // Reset audio button
+    if (audioBtn) {
+        audioBtn.classList.remove('muted');
+        audioBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+            <span>Mic</span>
+        `;
+    }
+    
+    // Reset video button
+    if (videoBtn) {
+        videoBtn.classList.remove('muted');
+        if (localVideoBox) {
+            localVideoBox.classList.remove('video-off');
+        }
+        videoBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+            </svg>
+            <span>Kamera</span>
+        `;
+    }
+}
+
+function toggleAudio() {
+    if (!localStream) return;
+
+    const audioTrack = localStream.getAudioTracks()[0];
+    if (audioTrack) {
+        isAudioEnabled = !isAudioEnabled;
+        audioTrack.enabled = isAudioEnabled;
+
+        const btn = document.getElementById('toggleAudioBtn');
+        if (isAudioEnabled) {
+            btn.classList.remove('muted');
+            btn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+                <span>Mic</span>
+            `;
+        } else {
+            btn.classList.add('muted');
+            btn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
+                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+                <span>Muted</span>
+            `;
+        }
+    }
+}
+
+function toggleVideo() {
+    if (!localStream) return;
+
+    const videoTrack = localStream.getVideoTracks()[0];
+    if (videoTrack) {
+        isVideoEnabled = !isVideoEnabled;
+        videoTrack.enabled = isVideoEnabled;
+
+        const btn = document.getElementById('toggleVideoBtn');
+        const localVideoBox = document.getElementById('localVideoBox');
+
+        if (isVideoEnabled) {
+            btn.classList.remove('muted');
+            localVideoBox.classList.remove('video-off');
+            btn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+                <span>Kamera</span>
+            `;
+        } else {
+            btn.classList.add('muted');
+            localVideoBox.classList.add('video-off');
+            btn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                    <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"></path>
+                </svg>
+                <span>Kamera Off</span>
+            `;
+        }
+    }
+}
+
 function endCall() {
     if (peerConnection) {
         peerConnection.close();
@@ -566,6 +782,12 @@ function endCall() {
     }
     remoteUserId = null;
     iceCandidatesQueue = [];
+    isAudioEnabled = true;
+    isVideoEnabled = true;
+    
+    // Reset UI controls
+    resetVideoControls();
+    
     document.getElementById('videoCallContainer').classList.remove('active');
     document.getElementById('remoteVideo').srcObject = null;
     document.getElementById('localVideo').srcObject = null;
@@ -573,6 +795,8 @@ function endCall() {
 
 document.getElementById('videoBtn').addEventListener('click', startVideoCall);
 document.getElementById('hangupBtn').addEventListener('click', endCall);
+document.getElementById('toggleAudioBtn').addEventListener('click', toggleAudio);
+document.getElementById('toggleVideoBtn').addEventListener('click', toggleVideo);
 
 // ==================== Utilities ====================
 function scrollToBottom() {
@@ -596,8 +820,12 @@ messageInput.addEventListener('keypress', (e) => {
 });
 
 messageInput.addEventListener('input', () => {
-    if (!isTyping && ws && ws.readyState === WebSocket.OPEN) {
+    const now = Date.now();
+
+    // Throttle: hanya kirim typing indicator max 1x per 2 detik
+    if (!isTyping && ws && ws.readyState === WebSocket.OPEN && (now - lastTypingBroadcast) > TYPING_THROTTLE_MS) {
         isTyping = true;
+        lastTypingBroadcast = now;
         ws.send(JSON.stringify({ type: 'typing' }));
     }
 
@@ -655,6 +883,23 @@ clearBtn.addEventListener('click', async () => {
         } catch (e) {
             console.error('Failed to clear:', e);
         }
+    }
+});
+
+// Incoming call modal handlers
+acceptCallBtn.addEventListener('click', () => {
+    console.log('✅ User clicked ACCEPT');
+    if (pendingCallResolve) {
+        pendingCallResolve(true);
+        hideIncomingCallModal();
+    }
+});
+
+rejectCallBtn.addEventListener('click', () => {
+    console.log('❌ User clicked REJECT');
+    if (pendingCallResolve) {
+        pendingCallResolve(false);
+        hideIncomingCallModal();
     }
 });
 

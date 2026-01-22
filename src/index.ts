@@ -44,7 +44,12 @@ app.get('/api/messages', async (c) => {
             'SELECT * FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ?'
         ).bind(roomId, limit).all();
 
-        return c.json({ messages: results?.reverse() || [] });
+        const response = c.json({ messages: results?.reverse() || [] });
+
+        // Cache selama 30 detik untuk mengurangi D1 load
+        response.headers.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
+
+        return response;
     } catch (error) {
         console.error('Error fetching messages:', error);
         return c.json({ messages: [], error: 'Database not initialized' });

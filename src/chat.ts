@@ -16,6 +16,7 @@ interface SessionData {
     userId: string;
     username: string;
     color: string;
+    lastTypingBroadcast?: number;
 }
 
 interface Env {
@@ -131,7 +132,7 @@ export class ChatRoom extends DurableObject<Env> {
                     };
                     ws.serializeAttachment(session);
 
-                    // Notify others that user joined
+                    // Notify others that user joined (incremental)
                     this.broadcast({
                         type: 'join',
                         userId: session.userId,
@@ -141,8 +142,8 @@ export class ChatRoom extends DurableObject<Env> {
                         timestamp: Date.now()
                     }, ws);
 
-                    // Broadcast updated online list
-                    this.broadcastOnlineUsers();
+                    // Send full online list only to the new user
+                    this.sendOnlineUsersToClient(ws);
                     break;
 
                 case 'message':
@@ -180,25 +181,44 @@ export class ChatRoom extends DurableObject<Env> {
 
                 case 'update_profile':
                     // User updated their profile
+                    const oldUsername = session.username;
                     session = {
                         userId: session.userId,
                         username: data.username || session.username,
                         color: data.color || session.color
                     };
                     ws.serializeAttachment(session);
-                    this.broadcastOnlineUsers();
-                    break;
 
-                case 'typing':
-                    // User is typing, broadcast to others
+                    // Broadcast profile update (lebih efisien dari full list)
                     this.broadcast({
-                        type: 'typing' as any,
+                        type: 'join',
                         userId: session.userId,
                         username: session.username,
                         color: session.color,
-                        content: '',
+                        content: `${oldUsername} sekarang ${session.username}`,
                         timestamp: Date.now()
-                    }, ws);
+                    });
+                    break;
+
+                case 'typing':
+                    // Rate limit: max 1 typing broadcast per 2 seconds per user
+                    const now = Date.now();
+                    const lastBroadcast = session.lastTypingBroadcast || 0;
+
+                    if (now - lastBroadcast > 2000) {
+                        session.lastTypingBroadcast = now;
+                        ws.serializeAttachment(session);
+
+                        // User is typing, broadcast to others
+                        this.broadcast({
+                            type: 'typing' as any,
+                            userId: session.userId,
+                            username: session.username,
+                            color: session.color,
+                            content: '',
+                            timestamp: now
+                        }, ws);
+                    }
                     break;
 
                 case 'stop_typing':
@@ -249,6 +269,7 @@ export class ChatRoom extends DurableObject<Env> {
     async webSocketClose(ws: WebSocket, code: number, reason: string) {
         const session = ws.deserializeAttachment() as SessionData | null;
         if (session) {
+            // Incremental: broadcast leave dengan userId
             this.broadcast({
                 type: 'leave',
                 userId: session.userId,
@@ -257,8 +278,6 @@ export class ChatRoom extends DurableObject<Env> {
                 content: `${session.username} left the chat`,
                 timestamp: Date.now()
             });
-            // Update online list
-            this.broadcastOnlineUsers();
         }
 
         // Flush remaining messages when a user leaves
@@ -295,7 +314,7 @@ export class ChatRoom extends DurableObject<Env> {
         }
     }
 
-    private broadcastOnlineUsers() {
+    private sendOnlineUsersToClient(clientWs: WebSocket) {
         const sockets = this.ctx.getWebSockets();
         const users = sockets
             .map(ws => ws.deserializeAttachment() as SessionData | null)
@@ -316,11 +335,11 @@ export class ChatRoom extends DurableObject<Env> {
             timestamp: Date.now()
         });
 
-        for (const ws of sockets) {
-            if (ws.readyState === WebSocket.OPEN) {
-                try {
-                    ws.send(message);
-                } catch (e) { }
+        if (clientWs.readyState === WebSocket.OPEN) {
+            try {
+                clientWs.send(message);
+            } catch (e) {
+                console.error('Error sending online users:', e);
             }
         }
     }

@@ -88,6 +88,22 @@
             <div class="video-label">Kamu</div>
         </div>
         <div class="video-controls">
+            <button class="video-btn" id="toggleAudioBtn" title="Mute/Unmute">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                </svg>
+                <span>Mic</span>
+            </button>
+            <button class="video-btn" id="toggleVideoBtn" title="On/Off Camera">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+                <span>Kamera</span>
+            </button>
             <button class="video-btn hangup" id="hangupBtn">Tutup Telepon</button>
         </div>
     </div>
@@ -115,6 +131,29 @@
                 <div class="modal-actions">
                     <button class="btn-hand" id="cancelBtn">Batal</button>
                     <button class="btn-hand primary" id="saveBtn">Simpan</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Video Call Incoming Modal -->
+    <div class="modal-overlay" id="incomingCallModal" style="display: none;">
+        <div class="notebook-modal" style="max-width: 400px;">
+            <div style="position: relative; z-index: 2; text-align: center;">
+                <h2 class="modal-title" style="margin-bottom: 1rem;">📞 Panggilan Video Masuk</h2>
+                <p style="font-family: 'Patrick Hand', cursive; font-size: 1.2rem; margin: 1rem 0;">
+                    <strong id="callerName">Someone</strong> mau video call
+                </p>
+                <p style="font-size: 0.9rem; color: #666; margin-bottom: 1.5rem;">
+                    Terima panggilan?
+                </p>
+                <div class="modal-actions">
+                    <button class="btn-hand" id="rejectCallBtn" style="background: #c92a2a; color: white;">
+                        ❌ Tolak
+                    </button>
+                    <button class="btn-hand primary" id="acceptCallBtn" style="background: #15803d;">
+                        ✅ Terima
+                    </button>
                 </div>
             </div>
         </div>
