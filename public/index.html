@@ -467,6 +467,82 @@
             border-color: var(--ink-primary);
             color: var(--ink-primary);
         }
+
+        /* Online Users List */
+        .online-users-container {
+            position: relative;
+        }
+
+        .online-count-btn {
+            background: none;
+            border: 2px solid var(--ink-secondary);
+            padding: 2px 8px;
+            border-radius: 5px;
+            font-family: 'Patrick Hand', cursive;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.2s;
+        }
+
+        .online-count-btn:hover {
+            background: rgba(0, 0, 0, 0.05);
+            transform: translateY(-1px);
+        }
+
+        .online-list-popover {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 10px;
+            background: var(--paper-color);
+            border: 2px solid var(--ink-secondary);
+            box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.1);
+            width: 200px;
+            z-index: 50;
+            padding: 10px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            transform: rotate(1deg);
+        }
+
+        .online-list-popover.active {
+            display: flex;
+        }
+
+        .online-list-popover::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            right: 15px;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-bottom: 8px solid var(--ink-secondary);
+        }
+
+        .online-user-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1.1rem;
+        }
+
+        .online-dot {
+            width: 8px;
+            height: 8px;
+            background: #15803d;
+            border-radius: 50%;
+            box-shadow: 0 0 5px rgba(21, 128, 61, 0.5);
+        }
+
+        .online-user-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
     </style>
 </head>
 
@@ -479,6 +555,21 @@
             <div class="subject-title">Belajar Realtime Chat</div>
 
             <div class="header-controls">
+                <div class="online-users-container">
+                    <button class="online-count-btn" id="onlineCountBtn">
+                        <span class="online-dot"></span>
+                        <span id="onlineCountText">0 Online</span>
+                    </button>
+                    <div class="online-list-popover" id="onlineListPopover">
+                        <div
+                            style="font-weight: bold; border-bottom: 1px solid var(--line-color); margin-bottom: 5px; font-family: 'Permanent Marker', cursive;">
+                            Daftar Hadir</div>
+                        <div id="onlineUserList" style="max-height: 200px; overflow-y: auto;">
+                            <!-- Online users here -->
+                        </div>
+                    </div>
+                </div>
+
                 <span class="status-badge" id="statusBadge">Menghubungkan...</span>
 
                 <button class="icon-btn" id="settingsBtn" title="Ganti Identitas">
@@ -577,6 +668,10 @@
         const colorBlobs = document.querySelectorAll('.paint-blob');
         const statusBadge = document.getElementById('statusBadge');
         const clearBtn = document.getElementById('clearBtn');
+        const onlineCountBtn = document.getElementById('onlineCountBtn');
+        const onlineListPopover = document.getElementById('onlineListPopover');
+        const onlineUserList = document.getElementById('onlineUserList');
+        const onlineCountText = document.getElementById('onlineCountText');
 
         // ==================== Profile Management ====================
         function loadProfile() {
@@ -744,14 +839,46 @@
                     break;
                 case 'join':
                 case 'leave':
-                    // Optional: renderSystemMessage(`${data.username} ${data.type === 'join' ? 'masuk kelas' : 'ulang'}`);
+                    // Optional: renderSystemMessage(`${data.username} ${data.type === 'join' ? 'masuk kelas' : 'pulang'}`);
+                    break;
+                case 'online_users':
+                    updateOnlineList(data.users);
                     break;
                 case 'clear':
                     messagesContainer.innerHTML = '';
-                    renderSystemMessage('Halaman telah dihapus bersih oleh seorang');
+                    renderSystemMessage('Halaman telah dihapus bersih oleh seseorang');
                     break;
             }
         }
+
+        function updateOnlineList(users) {
+            onlineCountText.textContent = `${users.length} Online`;
+            onlineUserList.innerHTML = '';
+
+            users.forEach(user => {
+                const userEl = document.createElement('div');
+                userEl.className = 'online-user-item';
+                userEl.innerHTML = `
+                    <div class="online-dot" style="background: ${user.color || '#15803d'}"></div>
+                    <span class="online-user-name" style="color: ${user.color || 'inherit'}">${escapeHtml(user.username)} ${user.userId === profile.userId ? '(Kamu)' : ''}</span>
+                `;
+                onlineUserList.appendChild(userEl);
+            });
+        }
+
+        // Toggle online list popover
+        onlineCountBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onlineListPopover.classList.toggle('active');
+        });
+
+        document.addEventListener('click', () => {
+            onlineListPopover.classList.remove('active');
+        });
+
+        onlineListPopover.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
 
         function renderMessage(data, shouldScroll = true) {
             const isOwn = data.userId === profile.userId;

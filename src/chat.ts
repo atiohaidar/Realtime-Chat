@@ -1,12 +1,13 @@
 import { DurableObject } from 'cloudflare:workers';
 
 interface ChatMessage {
-    type: 'message' | 'join' | 'leave' | 'history' | 'typing' | 'stop_typing';
+    type: 'message' | 'join' | 'leave' | 'history' | 'typing' | 'stop_typing' | 'online_users';
     userId: string;
     username: string;
     color: string;
     content: string;
     timestamp: number;
+    users?: { userId: string, username: string, color: string }[];
 }
 
 interface SessionData {
@@ -137,6 +138,9 @@ export class ChatRoom extends DurableObject<Env> {
                         content: `${session.username} joined the chat`,
                         timestamp: Date.now()
                     }, ws);
+
+                    // Broadcast updated online list
+                    this.broadcastOnlineUsers();
                     break;
 
                 case 'message':
@@ -179,6 +183,7 @@ export class ChatRoom extends DurableObject<Env> {
                         color: data.color || session.color
                     };
                     ws.serializeAttachment(session);
+                    this.broadcastOnlineUsers();
                     break;
 
                 case 'typing':
@@ -221,6 +226,8 @@ export class ChatRoom extends DurableObject<Env> {
                 content: `${session.username} left the chat`,
                 timestamp: Date.now()
             });
+            // Update online list
+            this.broadcastOnlineUsers();
         }
 
         // Flush remaining messages when a user leaves
@@ -246,6 +253,36 @@ export class ChatRoom extends DurableObject<Env> {
                     console.error('Error sending message:', error);
                     // Connection might be stale, will be cleaned up on next message
                 }
+            }
+        }
+    }
+
+    private broadcastOnlineUsers() {
+        const sockets = this.ctx.getWebSockets();
+        const users = sockets
+            .map(ws => ws.deserializeAttachment() as SessionData | null)
+            .filter((session): session is SessionData => session !== null && !!session.userId)
+            // Filter unique userIds to avoid duplicates if someone has multiple tabs
+            .filter((user, index, self) =>
+                index === self.findIndex((u) => u.userId === user.userId)
+            )
+            .map(user => ({
+                userId: user.userId,
+                username: user.username,
+                color: user.color
+            }));
+
+        const message = JSON.stringify({
+            type: 'online_users',
+            users,
+            timestamp: Date.now()
+        });
+
+        for (const ws of sockets) {
+            if (ws.readyState === WebSocket.OPEN) {
+                try {
+                    ws.send(message);
+                } catch (e) { }
             }
         }
     }
