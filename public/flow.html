@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Durable Object Flow - Visualisasi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+            --accent: #6366f1;
+            --success: #22c55e;
+            --warning: #f59e0b;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        h1 {
+            margin-bottom: 40px;
+            text-align: center;
+        }
+
+        .diagram {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 500px;
+            background: var(--card);
+            border-radius: 16px;
+            border: 2px solid #334155;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .node {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            z-index: 2;
+        }
+
+        .box {
+            width: 120px;
+            height: 120px;
+            background: #334155;
+            border: 2px solid var(--accent);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 10px;
+            font-weight: 600;
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
+        }
+
+        .box.do {
+            border-color: #8b5cf6;
+        }
+
+        .box.d1 {
+            border-color: #06b6d4;
+        }
+
+        .label {
+            font-size: 14px;
+            color: #94a3b8;
+        }
+
+        /* Animation Signal */
+        .signal {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: var(--success);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--success);
+            display: none;
+        }
+
+        @keyframes flow-to-do {
+            0% {
+                left: 160px;
+                top: 250px;
+                opacity: 1;
+            }
+
+            100% {
+                left: 400px;
+                top: 250px;
+                opacity: 1;
+            }
+        }
+
+        @keyframes broadcast {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(4);
+                opacity: 0;
+            }
+        }
+
+        @keyframes save-to-d1 {
+            0% {
+                left: 400px;
+                top: 250px;
+                opacity: 1;
+            }
+
+            100% {
+                left: 640px;
+                top: 250px;
+                opacity: 1;
+            }
+        }
+
+        .btn-container {
+            margin-top: 40px;
+            display: flex;
+            gap: 20px;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: var(--accent);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
+        }
+
+        .description {
+            max-width: 600px;
+            margin-top: 40px;
+            line-height: 1.6;
+            color: #94a3b8;
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 12px;
+        }
+
+        .wave {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border: 2px solid var(--success);
+            border-radius: 50%;
+            display: none;
+            left: 370px;
+            top: 220px;
+        }
+
+        .back-link {
+            margin-top: 20px;
+            color: var(--accent);
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Alur Kerja Durable Object + WebSocket</h1>
+
+    <div class="diagram">
+        <div class="node">
+            <div class="box">📱 Browser (User A)</div>
+            <div class="label">WebSocket Client</div>
+        </div>
+
+        <div class="node">
+            <div class="box do" id="doNode">⚙️ Durable Object (Room)</div>
+            <div class="label">Single Instance</div>
+        </div>
+
+        <div class="node">
+            <div class="box d1">🗄️ D1 Database</div>
+            <div class="label">Persistent Storage</div>
+        </div>
+
+        <!-- Animated Elements -->
+        <div id="msgSignal" class="signal"></div>
+        <div id="saveSignal" class="signal"></div>
+        <div id="broadcastWave" class="wave"></div>
+    </div>
+
+    <div class="btn-container">
+        <button onclick="startFlow()">Simulasikan Kirim Pesan</button>
+    </div>
+
+    <div class="description" id="stepText">
+        Klik tombol di atas untuk melihat bagaimana data mengalir dari Browser ke Durable Object, lalu dibroadcast ke
+        user lain dan disimpan ke database.
+    </div>
+
+    <a href="/" class="back-link">← Kembali ke Chat</a>
+
+    <script>
+        const msgSignal = document.getElementById('msgSignal');
+        const saveSignal = document.getElementById('saveSignal');
+        const broadcastWave = document.getElementById('broadcastWave');
+        const stepText = document.getElementById('stepText');
+
+        function startFlow() {
+            // Step 1: User Sends Message
+            stepText.innerHTML = "<b>Step 1:</b> Browser mengirim pesan via WebSocket ke Cloudflare Worker, yang kemudian meneruskannya ke instance Durable Object yang spesifik (Room).";
+            msgSignal.style.display = 'block';
+            msgSignal.style.animation = 'flow-to-do 1s forwards';
+
+            setTimeout(() => {
+                msgSignal.style.display = 'none';
+                msgSignal.style.animation = '';
+
+                // Step 2: DO Broadcasts
+                stepText.innerHTML = "<b>Step 2:</b> Durable Object menerima pesan. Karena DO ini adalah 'Single Instance' untuk room tersebut, ia memiliki daftar semua koneksi WebSocket aktif dan melakukan <b>BROADCAST</b> ke semua user secara realtime.";
+                broadcastWave.style.display = 'block';
+                broadcastWave.style.animation = 'broadcast 1s infinite';
+
+                setTimeout(() => {
+                    broadcastWave.style.display = 'none';
+                    broadcastWave.style.animation = '';
+
+                    // Step 3: Persistence to D1
+                    stepText.innerHTML = "<b>Step 3:</b> Durable Object secara berkala atau per-batch melakukan <b>PERSISTENCE</b> dengan menyimpan riwayat pesan ke Cloudflare D1 Database.";
+                    saveSignal.style.display = 'block';
+                    saveSignal.style.animation = 'save-to-d1 1s forwards';
+
+                    setTimeout(() => {
+                        saveSignal.style.display = 'none';
+                        saveSignal.style.animation = '';
+                        stepText.innerHTML = "<b>Selesai:</b> Pesan sekarang sudah sampai di user lain dan tersimpan aman di database! 🚀";
+                    }, 1000);
+
+                }, 2000);
+
+            }, 1000);
+        }
+    </script>
+</body>
+
+</html>

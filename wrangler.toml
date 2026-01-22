@@ -1,0 +1,21 @@
+name = "realtime-chat"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[assets]
+directory = "./public"
+
+# Durable Objects binding
+[[durable_objects.bindings]]
+name = "CHAT_ROOM"
+class_name = "ChatRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ChatRoom"]
+
+# D1 Database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "chat-db"
+database_id = "8047f5c7-66b9-427c-9fe7-73aa635cd301"
