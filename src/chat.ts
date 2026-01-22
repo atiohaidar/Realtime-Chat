@@ -1,13 +1,15 @@
 import { DurableObject } from 'cloudflare:workers';
 
 interface ChatMessage {
-    type: 'message' | 'join' | 'leave' | 'history' | 'typing' | 'stop_typing' | 'online_users';
+    type: 'message' | 'join' | 'leave' | 'history' | 'typing' | 'stop_typing' | 'online_users' | 'signal';
     userId: string;
     username: string;
     color: string;
     content: string;
     timestamp: number;
     users?: { userId: string, username: string, color: string }[];
+    to?: string; // Optional target user ID for private signaling (WebRTC)
+    metadata?: any;
 }
 
 interface SessionData {
@@ -152,7 +154,8 @@ export class ChatRoom extends DurableObject<Env> {
                         username: session.username,
                         color: session.color,
                         content: data.content.trim(),
-                        timestamp: Date.now()
+                        timestamp: Date.now(),
+                        metadata: data.metadata
                     };
 
                     // Broadcast to all clients EXCEPT sender (sender does optimistic UI)
@@ -209,6 +212,34 @@ export class ChatRoom extends DurableObject<Env> {
                         timestamp: Date.now()
                     }, ws);
                     break;
+
+                case 'signal':
+                    // WebRTC signaling: forward the signal to the specific user 'to'
+                    if (data.to) {
+                        const targetSession = Array.from(this.ctx.getWebSockets()).find(socket => {
+                            const sess = socket.deserializeAttachment() as SessionData | null;
+                            return sess?.userId === data.to;
+                        });
+
+                        if (targetSession && targetSession.readyState === WebSocket.OPEN) {
+                            try {
+                                targetSession.send(JSON.stringify({
+                                    type: 'signal',
+                                    userId: session.userId,
+                                    username: session.username,
+                                    color: session.color,
+                                    content: data.content,
+                                    timestamp: Date.now()
+                                }));
+                                console.log(`Signal forwarded from ${session.userId} to ${data.to}`);
+                            } catch (error) {
+                                console.error('Error forwarding signal:', error);
+                            }
+                        } else {
+                            console.error(`Target user ${data.to} not found or not connected`);
+                        }
+                    }
+                    break;
             }
         } catch (error) {
             console.error('Error processing message:', error);
@@ -246,12 +277,19 @@ export class ChatRoom extends DurableObject<Env> {
         const sockets = this.ctx.getWebSockets();
 
         for (const ws of sockets) {
+            // Optimization: If a recipient is specified, only send it to that user
+            if (message.to) {
+                const targetSession = ws.deserializeAttachment() as SessionData | null;
+                if (targetSession?.userId !== message.to) {
+                    continue; // Not the intended recipient
+                }
+            }
+
             if (ws !== exclude && ws.readyState === WebSocket.OPEN) {
                 try {
                     ws.send(messageStr);
                 } catch (error) {
                     console.error('Error sending message:', error);
-                    // Connection might be stale, will be cleaned up on next message
                 }
             }
         }
