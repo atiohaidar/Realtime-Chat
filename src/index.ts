@@ -1,5 +1,4 @@
 import { Hono } from 'hono';
-import { serveStatic } from 'hono/cloudflare-workers';
 
 export { ChatRoom } from './chat';
 
@@ -11,8 +10,7 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// Serve static files from /public
-app.get('/assets/*', serveStatic({ root: './' }));
+// Note: Static files are served automatically by Cloudflare Workers Assets (configured in wrangler.toml)
 
 // Route to serve visualization page
 app.get('/flow', async (c) => {
@@ -34,15 +32,29 @@ app.get('/ws', async (c) => {
     return stub.fetch(new Request(url.toString(), c.req.raw));
 });
 
-// API to fetch message history
+// API to fetch message history with cursor-based pagination
 app.get('/api/messages', async (c) => {
     const roomId = c.req.query('room') || 'general';
-    const limit = parseInt(c.req.query('limit') || '50');
+    const limit = Math.min(parseInt(c.req.query('limit') || '50'), 100); // Max 100
+    const before = c.req.query('before'); // Timestamp for cursor-based pagination
 
     try {
-        const { results } = await c.env.DB.prepare(
-            'SELECT * FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ?'
-        ).bind(roomId, limit).all();
+        let query: string;
+        let bindings: any[];
+
+        if (before) {
+            // Load messages older than the given timestamp
+            query = `SELECT * FROM messages 
+                     WHERE room_id = ? AND created_at < datetime(?, 'unixepoch', 'subsec') 
+                     ORDER BY created_at DESC LIMIT ?`;
+            bindings = [roomId, parseInt(before) / 1000, limit];
+        } else {
+            // Load latest messages
+            query = 'SELECT * FROM messages WHERE room_id = ? ORDER BY created_at DESC LIMIT ?';
+            bindings = [roomId, limit];
+        }
+
+        const { results } = await c.env.DB.prepare(query).bind(...bindings).all();
 
         // Parse metadata JSON string back to object
         const messages = (results || []).reverse().map((msg: any) => ({

@@ -207,9 +207,16 @@ function showRemoteScreenShare(stream) {
         modal.className = 'screen-share-modal';
         modal.innerHTML = `
             <div class="screen-share-header">
-                <span class="screen-share-title">📺 Layar Teman</span>
-                <div class="screen-share-header-buttons">
-                    <button id="remoteScreenShareFullscreenBtn" class="screen-share-header-btn" title="Fullscreen">
+                <div class="screen-share-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                    <span>Layar Teman</span>
+                </div>
+                <div class="screen-share-actions">
+                    <button class="ss-btn" id="remoteScreenShareFullscreenBtn" title="Fullscreen">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="15 3 21 3 21 9"></polyline>
                             <polyline points="9 21 3 21 3 15"></polyline>
@@ -217,15 +224,30 @@ function showRemoteScreenShare(stream) {
                             <line x1="3" y1="21" x2="10" y2="14"></line>
                         </svg>
                     </button>
-                    <button id="remoteScreenShareMinimizeBtn" class="screen-share-header-btn" title="Minimize">
+                    <button class="ss-btn" id="remoteScreenShareMinimizeBtn" title="Minimize">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                            <polyline points="4 14 10 14 10 20"></polyline>
+                            <polyline points="20 10 14 10 14 4"></polyline>
+                            <line x1="14" y1="10" x2="21" y2="3"></line>
+                            <line x1="3" y1="21" x2="10" y2="14"></line>
                         </svg>
                     </button>
                 </div>
             </div>
-            <div class="screen-share-video-container">
+            <div class="screen-share-content">
                 <video id="remoteScreenShareVideo" autoplay playsinline></video>
+            </div>
+            <div class="screen-share-controls">
+                <button class="ss-control-btn" id="remoteScreenShareMuteBtn" title="Mute/Unmute">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                    <span>Mic</span>
+                </button>
+                <button class="ss-control-btn hangup" id="remoteScreenShareCloseBtn">Tutup</button>
             </div>
         `;
         document.body.appendChild(modal);
@@ -233,6 +255,13 @@ function showRemoteScreenShare(stream) {
         // Add event listeners
         document.getElementById('remoteScreenShareFullscreenBtn').onclick = toggleRemoteScreenShareFullscreen;
         document.getElementById('remoteScreenShareMinimizeBtn').onclick = toggleRemoteScreenShareMinimize;
+        document.getElementById('remoteScreenShareMuteBtn').onclick = () => {
+            toggleAudioCallMute();
+            updateRemoteScreenShareMuteBtn();
+        };
+        document.getElementById('remoteScreenShareCloseBtn').onclick = () => {
+            hideRemoteScreenShare();
+        };
     }
 
     const video = document.getElementById('remoteScreenShareVideo');
@@ -242,6 +271,9 @@ function showRemoteScreenShare(stream) {
 
     modal.classList.add('active');
     modal.classList.remove('minimized');
+
+    // Update mute button state
+    updateRemoteScreenShareMuteBtn();
 
     if (window.Chat) {
         window.Chat.renderSystemMessage('Teman membagikan layar');
@@ -276,6 +308,36 @@ function toggleRemoteScreenShareMinimize() {
     if (modal) {
         modal.classList.toggle('minimized');
         modal.classList.remove('fullscreen');
+    }
+}
+
+function updateRemoteScreenShareMuteBtn() {
+    const btn = document.getElementById('remoteScreenShareMuteBtn');
+    if (!btn) return;
+
+    if (!isAudioCallMuted) {
+        btn.classList.remove('muted');
+        btn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+            <span>Mic</span>
+        `;
+    } else {
+        btn.classList.add('muted');
+        btn.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="1" y1="1" x2="23" y2="23"></line>
+                <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
+                <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+            </svg>
+            <span>Muted</span>
+        `;
     }
 }
 
@@ -462,6 +524,20 @@ async function handleAudioSignal(data) {
         console.log('📞 Audio call ended by', data.username);
         Chat.renderSystemMessage(`${data.username} mengakhiri panggilan suara`);
         endAudioCall(false); // false = don't send end signal back
+    } else if (signal.type === 'screen-share-status') {
+        // Handle screen share status from remote peer
+        console.log('📺 Screen share status:', signal.isSharing ? 'started' : 'stopped');
+        if (signal.isSharing) {
+            // Remote started screen sharing - the video track will come via ontrack
+            Chat.renderSystemMessage('Teman mulai berbagi layar');
+        } else {
+            // Remote stopped screen sharing - hide the receiver modal
+            hideRemoteScreenShare();
+            // Also hide the ScreenShare receiver modal if open
+            if (window.ScreenShare && window.ScreenShare.hideReceiverScreenShareModal) {
+                window.ScreenShare.hideReceiverScreenShareModal();
+            }
+        }
     }
 }
 
@@ -517,6 +593,9 @@ function toggleAudioCallMute() {
                 <span>Muted</span>
             `;
         }
+
+        // Also update the remote screen share mute button if visible
+        updateRemoteScreenShareMuteBtn();
     }
 }
 

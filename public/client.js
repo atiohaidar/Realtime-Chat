@@ -28,20 +28,40 @@ let isWindowFocused = true;
 let originalTitle = document.title;
 
 // ==================== Sound Notification ====================
+// Reuse single AudioContext for better performance
+let audioCtx = null;
+
+function getAudioContext() {
+    if (!audioCtx || audioCtx.state === 'closed') {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    // Resume if suspended (browser autoplay policy)
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    return audioCtx;
+}
+
 function createBeepSound(frequency = 800, duration = 150, volume = 0.3) {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    
-    oscillator.frequency.value = frequency;
-    oscillator.type = 'sine';
-    gainNode.gain.value = volume;
-    
-    oscillator.start();
-    oscillator.stop(audioCtx.currentTime + duration / 1000);
+    try {
+        const ctx = getAudioContext();
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        oscillator.frequency.value = frequency;
+        oscillator.type = 'sine';
+        gainNode.gain.setValueAtTime(volume, ctx.currentTime);
+        // Fade out to prevent click noise
+        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration / 1000);
+
+        oscillator.start(ctx.currentTime);
+        oscillator.stop(ctx.currentTime + duration / 1000);
+    } catch (e) {
+        console.warn('Audio playback failed:', e);
+    }
 }
 
 function playMessageSound() {
@@ -57,7 +77,7 @@ function playCallSound() {
         createBeepSound(700, 200, 0.4);
         setTimeout(() => createBeepSound(900, 200, 0.4), 250);
     };
-    
+
     playRing();
     setTimeout(playRing, 600);
     setTimeout(playRing, 1200);
@@ -231,36 +251,151 @@ function updateStatus(status) {
 }
 
 // ==================== Message History ====================
-async function loadHistory() {
+let oldestMessageTimestamp = null;
+let isLoadingHistory = false;
+let hasMoreHistory = true;
+const HISTORY_PAGE_SIZE = 30;
+
+async function loadHistory(loadOlder = false) {
+    if (isLoadingHistory || (!hasMoreHistory && loadOlder)) return;
+    isLoadingHistory = true;
+
     try {
-        // Clear initial placeholder if exists
-        if (messagesContainer.querySelector('.system-message')) {
+        // Build query URL
+        let url = `/api/messages?room=${roomId}&limit=${HISTORY_PAGE_SIZE}`;
+        if (loadOlder && oldestMessageTimestamp) {
+            url += `&before=${oldestMessageTimestamp}`;
+        }
+
+        // Clear initial placeholder if exists (only on first load)
+        if (!loadOlder && messagesContainer.querySelector('.system-message')) {
             messagesContainer.innerHTML = '';
         }
 
-        const response = await fetch(`/api/messages?room=${roomId}&limit=50`);
+        // Show loading indicator when loading older messages
+        let loadingIndicator = null;
+        if (loadOlder) {
+            loadingIndicator = document.createElement('div');
+            loadingIndicator.className = 'loading-history';
+            loadingIndicator.textContent = 'Memuat pesan lama...';
+            loadingIndicator.style.cssText = 'text-align:center;padding:0.5rem;color:#888;font-style:italic;';
+            messagesContainer.prepend(loadingIndicator);
+        }
+
+        const response = await fetch(url);
         const data = await response.json();
 
+        // Remove loading indicator
+        if (loadingIndicator) loadingIndicator.remove();
+
         if (data.messages && data.messages.length > 0) {
-            messagesContainer.innerHTML = ''; // Clear carefully
-            data.messages.forEach(msg => {
-                renderMessage({
+            // Track if we have more history
+            if (data.messages.length < HISTORY_PAGE_SIZE) {
+                hasMoreHistory = false;
+            }
+
+            // Get scroll position before adding messages
+            const prevScrollHeight = messagesContainer.scrollHeight;
+
+            if (!loadOlder) {
+                messagesContainer.innerHTML = ''; // Clear on first load
+            }
+
+            // Render messages
+            const fragment = document.createDocumentFragment();
+            data.messages.forEach((msg, index) => {
+                const msgEl = createMessageElement({
                     type: 'message',
                     userId: msg.user_id,
                     username: msg.username,
                     color: msg.color,
                     content: msg.content,
                     timestamp: new Date(msg.created_at).getTime(),
-                    metadata: msg.metadata // Include metadata for call invites
-                }, false);
+                    metadata: msg.metadata
+                });
+
+                if (loadOlder) {
+                    fragment.appendChild(msgEl);
+                } else {
+                    messagesContainer.appendChild(msgEl);
+                }
+
+                // Track oldest message
+                if (index === 0 || new Date(msg.created_at).getTime() < oldestMessageTimestamp) {
+                    oldestMessageTimestamp = new Date(msg.created_at).getTime();
+                }
             });
-            scrollToBottom();
-        } else {
+
+            if (loadOlder) {
+                // Prepend older messages
+                messagesContainer.prepend(fragment);
+                // Maintain scroll position
+                messagesContainer.scrollTop = messagesContainer.scrollHeight - prevScrollHeight;
+            } else {
+                scrollToBottom();
+            }
+        } else if (!loadOlder) {
             renderSystemMessage('Halaman masih kosong...');
+        } else {
+            hasMoreHistory = false;
         }
     } catch (e) {
         console.error('Failed to load history:', e);
+    } finally {
+        isLoadingHistory = false;
     }
+}
+
+// Lazy load older messages on scroll to top
+messagesContainer.addEventListener('scroll', () => {
+    if (messagesContainer.scrollTop <= 50 && hasMoreHistory && !isLoadingHistory) {
+        loadHistory(true);
+    }
+});
+
+// Helper function to create message element without appending
+function createMessageElement(data) {
+    const isOwn = data.userId === profile.userId;
+    const time = new Date(data.timestamp).toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+    const initial = data.username.charAt(0).toUpperCase();
+    const inkColor = data.color || (isOwn ? profile.color : '#333');
+
+    const messageEl = document.createElement('div');
+    messageEl.className = `message-row ${isOwn ? 'own' : ''}`;
+
+    messageEl.innerHTML = `
+        <div class="avatar-doodle" style="background-color: ${inkColor}">${initial}</div>
+        <div class="message-bubble ${data.metadata?.action === 'join_call' ? 'call-invite' : ''} ${data.metadata?.action === 'join_audio_call' ? 'audio-call-invite' : ''}" 
+             style="${(data.metadata?.action === 'join_call' || data.metadata?.action === 'join_audio_call') ? 'cursor: pointer;' : ''}">
+            ${!isOwn ? `<span class="sender-name" style="color:${inkColor}">${escapeHtml(data.username)}</span>` : ''}
+            <div class="message-text" style="color: ${inkColor}">
+                ${escapeHtml(data.content)}
+                <span class="timestamp">${time}</span>
+            </div>
+        </div>
+    `;
+
+    // Add click handlers for call invites
+    if (data.metadata?.action === 'join_call' && !isOwn) {
+        messageEl.querySelector('.message-bubble').addEventListener('click', () => {
+            if (window.VideoCall) {
+                window.VideoCall.joinVideoCall(data.userId, data.username);
+            }
+        });
+    }
+
+    if (data.metadata?.action === 'join_audio_call' && !isOwn) {
+        messageEl.querySelector('.message-bubble').addEventListener('click', () => {
+            if (window.AudioCall) {
+                window.AudioCall.joinAudioCall(data.userId, data.username);
+            }
+        });
+    }
+
+    return messageEl;
 }
 
 // ==================== Message Handling ====================
@@ -320,6 +455,11 @@ function handleMessage(data) {
                     if (window.AudioCall) {
                         window.AudioCall.handleAudioSignal(data);
                     }
+                } else if (signalContent.type === 'screen-share-status' && signalContent.mode === 'audio') {
+                    // Screen share status for audio call
+                    if (window.AudioCall) {
+                        window.AudioCall.handleAudioSignal(data);
+                    }
                 } else {
                     // Delegasi ke VideoCall module
                     if (window.VideoCall) {
@@ -366,48 +506,7 @@ onlineListPopover.addEventListener('click', (e) => {
 });
 
 function renderMessage(data, shouldScroll = true) {
-    const isOwn = data.userId === profile.userId;
-    const time = new Date(data.timestamp).toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-    const initial = data.username.charAt(0).toUpperCase();
-
-    const messageEl = document.createElement('div');
-    messageEl.className = `message-row ${isOwn ? 'own' : ''}`;
-
-    // For notebook style, we apply the user's selected ink color
-    const inkColor = data.color || (isOwn ? profile.color : '#333');
-
-    messageEl.innerHTML = `
-        <div class="avatar-doodle" style="background-color: ${inkColor}">${initial}</div>
-        <div class="message-bubble ${data.metadata?.action === 'join_call' ? 'call-invite' : ''} ${data.metadata?.action === 'join_audio_call' ? 'audio-call-invite' : ''}" 
-             style="${(data.metadata?.action === 'join_call' || data.metadata?.action === 'join_audio_call') ? 'cursor: pointer;' : ''}">
-            ${!isOwn ? `<span class="sender-name" style="color:${inkColor}">${escapeHtml(data.username)}</span>` : ''}
-            <div class="message-text" style="color: ${inkColor}">
-                ${escapeHtml(data.content)}
-                <span class="timestamp">${time}</span>
-            </div>
-        </div>
-    `;
-
-    if (data.metadata?.action === 'join_call' && !isOwn) {
-        messageEl.querySelector('.message-bubble').addEventListener('click', () => {
-            // Delegasi ke VideoCall module
-            if (window.VideoCall) {
-                window.VideoCall.joinVideoCall(data.userId, data.username);
-            }
-        });
-    }
-
-    if (data.metadata?.action === 'join_audio_call' && !isOwn) {
-        messageEl.querySelector('.message-bubble').addEventListener('click', () => {
-            // Delegasi ke AudioCall module
-            if (window.AudioCall) {
-                window.AudioCall.joinAudioCall(data.userId, data.username);
-            }
-        });
-    }
+    const messageEl = createMessageElement(data);
 
     // Insert before typing indicator if exists
     const typingInd = document.getElementById('typingIndicator');

@@ -297,6 +297,13 @@ constructor() {
 
 ## 📝 Changelog
 
+### v2.1 (2026-01-23) - Minor Optimizations
+- ✅ **Reusable AudioContext**: Single instance untuk semua notifikasi suara (prevent memory leak)
+- ✅ **Lazy Loading History**: Load 30 pesan per batch, load older saat scroll ke atas
+- ✅ **Cursor-based Pagination**: API `/api/messages` support parameter `before` untuk pagination
+- ✅ **Refactored renderMessage**: Menggunakan helper `createMessageElement` (DRY principle)
+- ✅ **Audio Fade-out**: Smooth transition untuk menghindari click noise
+
 ### v2.0 (2026-01-22) - Major Optimization
 - ✅ Removed redundant session Map
 - ✅ Fixed alarm race conditions

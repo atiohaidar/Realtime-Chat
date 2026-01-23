@@ -243,7 +243,7 @@ export class ChatRoom extends DurableObject<Env> {
                                 username: session.username,
                                 color: session.color,
                                 content: '',
-                                timestamp: now
+                                timestamp: typingNow
                             }, ws);
                         }
                     }
