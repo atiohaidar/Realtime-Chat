@@ -31,7 +31,8 @@ let originalTitle = document.title;
 // Reuse single AudioContext for better performance
 let audioCtx = null;
 
-function getAudioContext() {
+// Make available globally for other modules
+window.getAudioContext = function () {
     if (!audioCtx || audioCtx.state === 'closed') {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
@@ -40,6 +41,10 @@ function getAudioContext() {
         audioCtx.resume();
     }
     return audioCtx;
+};
+
+function getAudioContext() {
+    return window.getAudioContext();
 }
 
 function createBeepSound(frequency = 800, duration = 150, volume = 0.3) {
@@ -225,6 +230,10 @@ function attemptReconnect() {
 
 function updateStatus(status) {
     statusBadge.className = 'status-badge';
+    // Reset inline styles to avoid style bleeding between states
+    statusBadge.style.color = '';
+    statusBadge.style.borderColor = '';
+
     switch (status) {
         case 'connected':
             statusBadge.classList.add('connected');
@@ -245,6 +254,7 @@ function updateStatus(status) {
             break;
         case 'failed':
             statusBadge.style.color = '#c92a2a';
+            statusBadge.style.borderColor = '#c92a2a';
             statusBadge.textContent = 'Gagal Koneksi';
             break;
     }

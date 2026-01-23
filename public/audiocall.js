@@ -347,28 +347,36 @@ let audioRingtoneInterval = null;
 
 function playAudioRingtone() {
     const playRing = () => {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioCtx.createOscillator();
-        const gainNode = audioCtx.createGain();
-        oscillator.connect(gainNode);
-        gainNode.connect(audioCtx.destination);
-        oscillator.frequency.value = 600;
-        oscillator.type = 'sine';
-        gainNode.gain.value = 0.3;
-        oscillator.start();
-        oscillator.stop(audioCtx.currentTime + 0.15);
+        try {
+            // Reuse the shared AudioContext helper from client.js if available
+            const audioCtx = window.getAudioContext ? window.getAudioContext() : new (window.AudioContext || window.webkitAudioContext)();
 
-        setTimeout(() => {
-            const osc2 = audioCtx.createOscillator();
-            const gain2 = audioCtx.createGain();
-            osc2.connect(gain2);
-            gain2.connect(audioCtx.destination);
-            osc2.frequency.value = 800;
-            osc2.type = 'sine';
-            gain2.gain.value = 0.3;
-            osc2.start();
-            osc2.stop(audioCtx.currentTime + 0.15);
-        }, 180);
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.frequency.value = 600;
+            oscillator.type = 'sine';
+            gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.15);
+
+            setTimeout(() => {
+                const osc2 = audioCtx.createOscillator();
+                const gain2 = audioCtx.createGain();
+                osc2.connect(gain2);
+                gain2.connect(audioCtx.destination);
+                osc2.frequency.value = 800;
+                osc2.type = 'sine';
+                gain2.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+                osc2.start(audioCtx.currentTime);
+                osc2.stop(audioCtx.currentTime + 0.15);
+            }, 180);
+        } catch (e) {
+            console.warn('Audio ringtone playback failed:', e);
+        }
     };
 
     playRing();
